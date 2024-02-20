@@ -67,6 +67,8 @@ const (
 	EarliestBlockNumber  = BlockNumber(0)
 )
 
+const ConfirmationBlockHeight = int64(4)
+
 // UnmarshalJSON parses the given JSON fragment into a BlockNumber. It supports:
 // - "latest", "earliest" or "pending" as string arguments
 // - the block number

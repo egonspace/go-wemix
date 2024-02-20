@@ -76,7 +76,13 @@ func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumb
 		return b.eth.blockchain.CurrentBlock().Header(), nil
 	}
 	if number == rpc.FinalizedBlockNumber {
-		return b.eth.blockchain.CurrentBlock().Header(), nil
+		FinalizedBlockNumber := b.eth.blockchain.CurrentBlock().Header().Number
+		FinalizedBlockNumber.Sub(FinalizedBlockNumber, new(big.Int).SetInt64(rpc.ConfirmationBlockHeight))
+		if FinalizedBlockNumber.Cmp(common.Big0) > 0 {
+			return b.eth.blockchain.GetHeaderByNumber(FinalizedBlockNumber.Uint64()), nil
+		} else {
+			return b.eth.blockchain.GetHeaderByNumber(uint64(0)), nil
+		}
 	}
 	return b.eth.blockchain.GetHeaderByNumber(uint64(number)), nil
 }
@@ -108,12 +114,19 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 		block := b.eth.miner.PendingBlock()
 		return block, nil
 	}
-	// Otherwise resolve and return the block
+	// Otherwise resolve and return the block:q
+
 	if number == rpc.LatestBlockNumber {
 		return b.eth.blockchain.CurrentBlock(), nil
 	}
 	if number == rpc.FinalizedBlockNumber {
-		return b.eth.blockchain.CurrentBlock(), nil
+		FinalizedBlockNumber := b.eth.blockchain.CurrentBlock().Header().Number
+		FinalizedBlockNumber.Sub(FinalizedBlockNumber, new(big.Int).SetInt64(rpc.ConfirmationBlockHeight))
+		if FinalizedBlockNumber.Cmp(common.Big0) > 0 {
+			return b.eth.blockchain.GetBlockByNumber(FinalizedBlockNumber.Uint64()), nil
+		} else {
+			return b.eth.blockchain.GetBlockByNumber(uint64(0)), nil
+		}
 	}
 	return b.eth.blockchain.GetBlockByNumber(uint64(number)), nil
 }

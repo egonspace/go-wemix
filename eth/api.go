@@ -353,7 +353,13 @@ func (api *PublicDebugAPI) DumpBlock(blockNr rpc.BlockNumber) (state.Dump, error
 	if blockNr == rpc.LatestBlockNumber {
 		block = api.eth.blockchain.CurrentBlock()
 	} else if blockNr == rpc.FinalizedBlockNumber {
-		block = api.eth.blockchain.CurrentBlock()
+		FinalizedBlockNumber := api.eth.blockchain.CurrentBlock().Header().Number
+		FinalizedBlockNumber.Sub(FinalizedBlockNumber, new(big.Int).SetInt64(rpc.ConfirmationBlockHeight))
+		if FinalizedBlockNumber.Cmp(common.Big0) > 0 {
+			block = api.eth.blockchain.GetBlockByNumber(FinalizedBlockNumber.Uint64())
+		} else {
+			block = api.eth.blockchain.GetBlockByNumber(uint64(0))
+		}
 	} else {
 		block = api.eth.blockchain.GetBlockByNumber(uint64(blockNr))
 	}
@@ -443,7 +449,13 @@ func (api *PublicDebugAPI) AccountRange(blockNrOrHash rpc.BlockNumberOrHash, sta
 			if number == rpc.LatestBlockNumber {
 				block = api.eth.blockchain.CurrentBlock()
 			} else if number == rpc.FinalizedBlockNumber {
-				block = api.eth.blockchain.CurrentBlock()
+				FinalizedBlockNumber := api.eth.blockchain.CurrentBlock().Header().Number
+				FinalizedBlockNumber.Sub(FinalizedBlockNumber, new(big.Int).SetInt64(rpc.ConfirmationBlockHeight))
+				if FinalizedBlockNumber.Cmp(common.Big0) > 0 {
+					block = api.eth.blockchain.GetBlockByNumber(FinalizedBlockNumber.Uint64())
+				} else {
+					block = api.eth.blockchain.GetBlockByNumber(uint64(0))
+				}
 			} else {
 				block = api.eth.blockchain.GetBlockByNumber(uint64(number))
 			}
