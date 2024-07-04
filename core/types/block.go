@@ -83,6 +83,12 @@ type Header struct {
 	// BaseFee was added by EIP-1559 and is ignored in legacy headers.
 	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
 
+	// Added by wemix
+	Fees         *big.Int `json:"fees" rlp:"optional"`
+	Rewards      []byte   `json:"rewards" rlp:"optional"`
+	MinerNodeId  []byte   `json:"minerNodeId" rlp:"optional"`
+	MinerNodeSig []byte   `json:"minerNodeSig" rlp:"optional"`
+
 	// WithdrawalsHash was added by EIP-4895 and is ignored in legacy headers.
 	WithdrawalsHash *common.Hash `json:"withdrawalsRoot" rlp:"optional"`
 
