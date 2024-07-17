@@ -194,3 +194,29 @@ var (
 	// SystemAddress is where the system-transaction is sent from as per EIP-4788
 	SystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 )
+
+// WEMIX parameters
+var (
+	FixedDifficulty      int64  = 1   // 0 means no fixed difficulty
+	FixedGasLimit        uint64 = 0   // 0 means no fixed gas limit,
+	MaxIdleBlockInterval uint64 = 600 // in seconds
+	BlocksPerTurn        uint64 = 100
+	DropUnderPriced      bool   = true // drop underpriced transactions
+
+	NonceLimit     uint64 = 0    // nonce limit for non-governing accounts
+	UseRocksDb     int    = 1    // LevelDB (0) or RocksDB (1)
+	PrefetchCount  int    = 0    // Transaction Prefetch count for faster db read
+	MaxTxsPerBlock int    = 5000 // Max # of transactions in a block
+	Hub            string = ""   // Hub's id
+
+	BlockInterval        int64 = 1    // Block generation interval in seconds
+	BlockTimeAdjBlocks   int64 = 120  // Block interval to adjust timestamp
+	BlockTimeAdjMultiple int64 = 4    // How many of block intervals to consider
+	BlockMinBuildTime    int64 = 300  // Minimum block generation time in ms
+	BlockMinBuildTxs     int64 = 2500 // Minimum txs in a block with pending txs
+	BlockTrailTime       int64 = 300  // Time to leave for block data transfer transfer in ms
+
+	PublicRequestsCacheLocation string = ""  // Cache DB location
+	MaxPublicRequests           int64  = 100 // Max # of concurrent public requests
+	BootnodeCount               int    = 3   // Default bootnode peer count.
+)

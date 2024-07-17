@@ -201,6 +201,10 @@ func getGenesisState(db ethdb.Database, blockhash common.Hash) (alloc types.Gene
 	// - private network, can't recover
 	var genesis *Genesis
 	switch blockhash {
+	case params.WemixMainnetGenesisHash:
+		genesis = WemixMainnetGenesisBlock()
+	case params.WemixTestnetGenesisHash:
+		genesis = WemixTestnetGenesisBlock()
 	case params.MainnetGenesisHash:
 		genesis = DefaultGenesisBlock()
 	case params.GoerliGenesisHash:
@@ -401,6 +405,10 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 	switch {
 	case g != nil:
 		return g.Config
+	case ghash == params.WemixMainnetGenesisHash:
+		return params.WemixMainnetChainConfig
+	case ghash == params.WemixTestnetGenesisHash:
+		return params.WemixTestnetChainConfig
 	case ghash == params.MainnetGenesisHash:
 		return params.MainnetChainConfig
 	case ghash == params.HoleskyGenesisHash:
@@ -533,6 +541,22 @@ func DefaultGenesisBlock() *Genesis {
 		Difficulty: big.NewInt(17179869184),
 		Alloc:      decodePrealloc(mainnetAllocData),
 	}
+}
+
+func WemixMainnetGenesisBlock() *Genesis {
+	genesis := new(Genesis)
+	if err := json.NewDecoder(strings.NewReader(wemixMainnetGenesisJson)).Decode(genesis); err != nil {
+		panic("Cannot parse default wemix mainnet genesis.")
+	}
+	return genesis
+}
+
+func WemixTestnetGenesisBlock() *Genesis {
+	genesis := new(Genesis)
+	if err := json.NewDecoder(strings.NewReader(wemixTestnetGenesisJson)).Decode(genesis); err != nil {
+		panic("Cannot parse default wemix testnet genesis.")
+	}
+	return genesis
 }
 
 // DefaultGoerliGenesisBlock returns the Görli network genesis block.

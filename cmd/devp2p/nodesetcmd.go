@@ -228,6 +228,10 @@ func minAgeFilter(args []string) (nodeFilter, error) {
 func ethFilter(args []string) (nodeFilter, error) {
 	var filter forkid.Filter
 	switch args[0] {
+	case "wemix":
+		filter = forkid.NewStaticFilter(params.WemixMainnetChainConfig, core.WemixMainnetGenesisBlock().ToBlock())
+	case "twemix":
+		filter = forkid.NewStaticFilter(params.WemixTestnetChainConfig, core.WemixTestnetGenesisBlock().ToBlock())
 	case "mainnet":
 		filter = forkid.NewStaticFilter(params.MainnetChainConfig, core.DefaultGenesisBlock().ToBlock())
 	case "goerli":

@@ -41,9 +41,10 @@ var (
 
 	WemixMainnetChainConfig = &ChainConfig{
 		ChainID:                       big.NewInt(1111),
+		WemixLegacyBlock:              big.NewInt(0),
 		HomesteadBlock:                big.NewInt(0),
-		DAOForkBlock:                  big.NewInt(0),
-		DAOForkSupport:                true,
+		DAOForkBlock:                  big.NewInt(0), // We shouldn't have applied DAO hard fork because we didn't have to
+		DAOForkSupport:                true,          // Why on earth?
 		EIP150Block:                   big.NewInt(0),
 		EIP155Block:                   big.NewInt(0),
 		EIP158Block:                   big.NewInt(0),
@@ -72,6 +73,37 @@ var (
 			FirstHalvingBlock: big.NewInt(53_525_500),
 			HalvingPeriod:     big.NewInt(63_115_200),
 			FinishRewardBlock: big.NewInt(2_467_714_000), // target date: 2101-01-01 00:00:00 (GMT+09)
+			HalvingTimes:      16,
+			HalvingRate:       50,
+		},
+	}
+
+	// WemixTestnetChainConfig contains the chain parameters to run a node on the Wemix test network.
+	WemixTestnetChainConfig = &ChainConfig{
+		ChainID:             big.NewInt(1112),
+		WemixLegacyBlock:    big.NewInt(0),
+		HomesteadBlock:      big.NewInt(0),
+		DAOForkBlock:        big.NewInt(0),
+		DAOForkSupport:      true,
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    big.NewInt(0),
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         big.NewInt(0),
+		PangyoBlock:         big.NewInt(10_000_000),
+		ApplepieBlock:       big.NewInt(26_240_268),
+		BriocheBlock:        big.NewInt(59_414_700), // target date: 24-06-04 11:00:41 (GMT+09)
+		Ethash:              new(EthashConfig),
+		Brioche: &BriocheConfig{
+			BlockReward:       big.NewInt(1e18),
+			FirstHalvingBlock: big.NewInt(59_414_700),
+			HalvingPeriod:     big.NewInt(63_115_200),
+			FinishRewardBlock: big.NewInt(2_473_258_000), // target date: 2100-12-01 11:02:21 (GMT+09)
 			HalvingTimes:      16,
 			HalvingRate:       50,
 		},
@@ -352,10 +384,12 @@ var (
 
 // NetworkNames are user friendly names to use in the chain spec banner.
 var NetworkNames = map[string]string{
-	MainnetChainConfig.ChainID.String(): "mainnet",
-	GoerliChainConfig.ChainID.String():  "goerli",
-	SepoliaChainConfig.ChainID.String(): "sepolia",
-	HoleskyChainConfig.ChainID.String(): "holesky",
+	WemixMainnetChainConfig.ChainID.String(): "wemix",
+	WemixTestnetChainConfig.ChainID.String(): "twemix",
+	MainnetChainConfig.ChainID.String():      "mainnet",
+	GoerliChainConfig.ChainID.String():       "goerli",
+	SepoliaChainConfig.ChainID.String():      "sepolia",
+	HoleskyChainConfig.ChainID.String():      "holesky",
 }
 
 // ChainConfig is the core config which determines the blockchain settings.
@@ -366,7 +400,8 @@ var NetworkNames = map[string]string{
 type ChainConfig struct {
 	ChainID *big.Int `json:"chainId"` // chainId identifies the current chain and is used for replay protection
 
-	HomesteadBlock *big.Int `json:"homesteadBlock,omitempty"` // Homestead switch block (nil = no fork, 0 = already homestead)
+	WemixLegacyBlock *big.Int `json:"wemixLegacyBlock,omitempty"` // Wemix legacy block (nil = no wemix legacy, 0 = already on wemix legacy)
+	HomesteadBlock   *big.Int `json:"homesteadBlock,omitempty"`   // Homestead switch block (nil = no fork, 0 = already homestead)
 
 	DAOForkBlock   *big.Int `json:"daoForkBlock,omitempty"`   // TheDAO hard-fork switch block (nil = no fork)
 	DAOForkSupport bool     `json:"daoForkSupport,omitempty"` // Whether the nodes supports or opposes the DAO hard-fork
@@ -650,6 +685,10 @@ func (c *ChainConfig) IsPangyo(num *big.Int) bool {
 // IsApplepie returns whether num is either equal to the Applepie fork block or greater.
 func (c *ChainConfig) IsApplepie(num *big.Int) bool {
 	return isBlockForked(c.ApplepieBlock, num)
+}
+
+func (c *ChainConfig) IsWemixLegacy(num *big.Int) bool {
+	return isBlockForked(c.WemixLegacyBlock, num)
 }
 
 func (c *ChainConfig) IsBrioche(num *big.Int) bool {

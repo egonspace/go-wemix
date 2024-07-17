@@ -43,6 +43,8 @@ func main() {
 		utils.BeaconGenesisTimeFlag,
 		utils.BeaconCheckpointFlag,
 		//TODO datadir for optional permanent database
+		utils.WemixMainnetFlag,
+		utils.WemixTestnetFlag,
 		utils.MainnetFlag,
 		utils.SepoliaFlag,
 		utils.GoerliFlag,

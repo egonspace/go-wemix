@@ -83,7 +83,7 @@ type Header struct {
 	// BaseFee was added by EIP-1559 and is ignored in legacy headers.
 	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
 
-	// Added by wemix
+	// WEMIX legacy fields; not used
 	Fees         *big.Int `json:"fees" rlp:"optional"`
 	Rewards      []byte   `json:"rewards" rlp:"optional"`
 	MinerNodeId  []byte   `json:"minerNodeId" rlp:"optional"`
@@ -102,24 +102,79 @@ type Header struct {
 	ParentBeaconRoot *common.Hash `json:"parentBeaconBlockRoot" rlp:"optional"`
 }
 
+type HeaderLegacy struct {
+	ParentHash  common.Hash    `json:"parentHash"       gencodec:"required"`
+	UncleHash   common.Hash    `json:"sha3Uncles"       gencodec:"required"`
+	Coinbase    common.Address `json:"miner"`
+	Root        common.Hash    `json:"stateRoot"        gencodec:"required"`
+	TxHash      common.Hash    `json:"transactionsRoot" gencodec:"required"`
+	ReceiptHash common.Hash    `json:"receiptsRoot"     gencodec:"required"`
+	Bloom       Bloom          `json:"logsBloom"        gencodec:"required"`
+	Difficulty  *big.Int       `json:"difficulty"       gencodec:"required"`
+	Number      *big.Int       `json:"number"           gencodec:"required"`
+	GasLimit    uint64         `json:"gasLimit"         gencodec:"required"`
+	GasUsed     uint64         `json:"gasUsed"          gencodec:"required"`
+	Time        uint64         `json:"timestamp"        gencodec:"required"`
+	Extra       []byte         `json:"extraData"        gencodec:"required"`
+	MixDigest   common.Hash    `json:"mixHash"`
+	Nonce       BlockNonce     `json:"nonce"`
+
+	// BaseFee was added by EIP-1559 and is ignored in legacy headers.
+	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
+
+	// WEMIX legacy fields
+	Fees         *big.Int `json:"fees" rlp:"optional"`
+	Rewards      []byte   `json:"rewards" rlp:"optional"`
+	MinerNodeId  []byte   `json:"minerNodeId" rlp:"optional"`
+	MinerNodeSig []byte   `json:"minerNodeSig" rlp:"optional"`
+}
+
 // field type overrides for gencodec
 type headerMarshaling struct {
-	Difficulty    *hexutil.Big
-	Number        *hexutil.Big
-	GasLimit      hexutil.Uint64
-	GasUsed       hexutil.Uint64
-	Time          hexutil.Uint64
-	Extra         hexutil.Bytes
-	BaseFee       *hexutil.Big
-	Hash          common.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
-	BlobGasUsed   *hexutil.Uint64
-	ExcessBlobGas *hexutil.Uint64
+	Difficulty   *hexutil.Big
+	Number       *hexutil.Big
+	GasLimit     hexutil.Uint64
+	GasUsed      hexutil.Uint64
+	Fees         *hexutil.Big // WEMIX legacy field
+	Time         hexutil.Uint64
+	Extra        hexutil.Bytes
+	Rewards      hexutil.Bytes // WEMIX legacy field
+	MinerNodeId  hexutil.Bytes // WEMIX legacy field
+	MinerNodeSig hexutil.Bytes // WEMIX legacy field
+	BaseFee      *hexutil.Big
+	Hash         common.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
+}
+
+func HeaderToHeaderLegacy(h *Header) *HeaderLegacy {
+	hh := &HeaderLegacy{
+		ParentHash:   h.ParentHash,
+		UncleHash:    h.UncleHash,
+		Coinbase:     h.Coinbase,
+		Root:         h.Root,
+		TxHash:       h.TxHash,
+		ReceiptHash:  h.ReceiptHash,
+		Bloom:        h.Bloom,
+		Difficulty:   h.Difficulty,
+		Number:       h.Number,
+		GasLimit:     h.GasLimit,
+		GasUsed:      h.GasUsed,
+		Time:         h.Time,
+		Extra:        h.Extra,
+		MixDigest:    h.MixDigest,
+		Nonce:        h.Nonce,
+		BaseFee:      h.BaseFee,
+		Fees:         h.Fees,
+		Rewards:      h.Rewards,
+		MinerNodeId:  h.MinerNodeId,
+		MinerNodeSig: h.MinerNodeSig,
+	}
+	return hh
 }
 
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
 func (h *Header) Hash() common.Hash {
-	return rlpHash(h)
+	return rlpHash(HeaderToHeaderLegacy(h))
 }
 
 var headerSize = common.StorageSize(reflect.TypeOf(Header{}).Size())
@@ -131,7 +186,7 @@ func (h *Header) Size() common.StorageSize {
 	if h.BaseFee != nil {
 		baseFeeBits = h.BaseFee.BitLen()
 	}
-	return headerSize + common.StorageSize(len(h.Extra)+(h.Difficulty.BitLen()+h.Number.BitLen()+baseFeeBits)/8)
+	return headerSize + common.StorageSize(len(h.Extra)+len(h.Rewards)+(h.Difficulty.BitLen()+h.Number.BitLen()+baseFeeBits)/8)
 }
 
 // SanityCheck checks a few basic things -- these checks are way beyond what
@@ -292,6 +347,13 @@ func CopyHeader(h *Header) *Header {
 		cpy.Extra = make([]byte, len(h.Extra))
 		copy(cpy.Extra, h.Extra)
 	}
+	if len(h.Rewards) > 0 {
+		cpy.Rewards = make([]byte, len(h.Rewards))
+		copy(cpy.Rewards, h.Rewards)
+	}
+	if h.Fees != nil {
+		cpy.Fees = new(big.Int).Set(h.Fees)
+	}
 	if h.WithdrawalsHash != nil {
 		cpy.WithdrawalsHash = new(common.Hash)
 		*cpy.WithdrawalsHash = *h.WithdrawalsHash
@@ -379,6 +441,12 @@ func (b *Block) TxHash() common.Hash      { return b.header.TxHash }
 func (b *Block) ReceiptHash() common.Hash { return b.header.ReceiptHash }
 func (b *Block) UncleHash() common.Hash   { return b.header.UncleHash }
 func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
+
+// added by WEMIX
+func (b *Block) Fees() *big.Int       { return b.header.Fees }
+func (b *Block) Rewards() []byte      { return common.CopyBytes(b.header.Rewards) }
+func (b *Block) MinerNodeId() []byte  { return b.header.MinerNodeId }
+func (b *Block) MinerNodeSig() []byte { return b.header.MinerNodeSig }
 
 func (b *Block) BaseFee() *big.Int {
 	if b.header.BaseFee == nil {

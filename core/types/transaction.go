@@ -45,10 +45,11 @@ var (
 
 // Transaction types.
 const (
-	LegacyTxType     = 0x00
-	AccessListTxType = 0x01
-	DynamicFeeTxType = 0x02
-	BlobTxType       = 0x03
+	LegacyTxType                = 0x00
+	AccessListTxType            = 0x01
+	DynamicFeeTxType            = 0x02
+	BlobTxType                  = 0x03
+	FeeDelegateDynamicFeeTxType = 22 // fee delegation
 )
 
 // Transaction is an Ethereum transaction.
@@ -57,9 +58,15 @@ type Transaction struct {
 	time  time.Time // Time first seen locally (spam avoidance)
 
 	// caches
-	hash atomic.Pointer[common.Hash]
-	size atomic.Uint64
-	from atomic.Pointer[sigCache]
+	hash     atomic.Pointer[common.Hash]
+	size     atomic.Uint64
+	from     atomic.Pointer[sigCache]
+	feePayer atomic.Pointer[sigCache] // fee delegation
+}
+
+type TransactionEx struct {
+	Tx   *Transaction
+	From common.Address `json:"from" rlp:"nil"`
 }
 
 // NewTx creates a new transaction.
@@ -89,6 +96,10 @@ type TxData interface {
 
 	rawSignatureValues() (v, r, s *big.Int)
 	setSignatureValues(chainID, v, r, s *big.Int)
+
+	// fee delegation
+	feePayer() *common.Address
+	rawFeePayerSignatureValues() (v, r, s *big.Int)
 
 	// effectiveGasPrice computes the gas price paid by the transaction, given
 	// the inclusion block baseFee.
@@ -206,6 +217,8 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 		inner = new(DynamicFeeTx)
 	case BlobTxType:
 		inner = new(BlobTx)
+	case FeeDelegateDynamicFeeTxType:
+		inner = new(FeeDelegateDynamicFeeTx)
 	default:
 		return nil, ErrTxTypeNotSupported
 	}
@@ -309,13 +322,45 @@ func (tx *Transaction) To() *common.Address {
 	return copyAddressPtr(tx.inner.to())
 }
 
+// WEMIX fee delegation
+// FeePayer returns the feePayer's address of the transaction.
+func (tx *Transaction) FeePayer() *common.Address { return tx.inner.feePayer() }
+
+// RawFeePayerSignatureValues returns the feePayer's FV, FR, FS signature values of the transaction.
+// The return values should not be modified by the caller.
+func (tx *Transaction) RawFeePayerSignatureValues() (v, r, s *big.Int) {
+	return tx.inner.rawFeePayerSignatureValues()
+}
+
 // Cost returns (gas * gasPrice) + (blobGas * blobGasPrice) + value.
 func (tx *Transaction) Cost() *big.Int {
 	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
-	if tx.Type() == BlobTxType {
+	if tx.Type() == FeeDelegateDynamicFeeTxType {
+		signer := LatestSignerForChainID(tx.ChainId())
+		from, _ := Sender(signer, tx)
+		if *tx.FeePayer() != from {
+			total = tx.Value()
+			return total
+		} else {
+			total.Add(total, tx.Value())
+			return total
+		}
+	} else if tx.Type() == BlobTxType {
 		total.Add(total, new(big.Int).Mul(tx.BlobGasFeeCap(), new(big.Int).SetUint64(tx.BlobGas())))
 	}
 	total.Add(total, tx.Value())
+	return total
+}
+
+// WEMIX fee delegation
+// FeePayerCost returns feePayer's gas * gasPrice + value.
+func (tx *Transaction) FeePayerCost() *big.Int {
+	signer := LatestSignerForChainID(tx.ChainId())
+	from, _ := Sender(signer, tx)
+	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
+	if *tx.FeePayer() == from {
+		total.Add(total, tx.Value())
+	}
 	return total
 }
 
@@ -521,6 +566,27 @@ func (tx *Transaction) Size() uint64 {
 
 	tx.size.Store(size)
 	return size
+}
+
+// EncodeRLP implements rlp.Encoder
+func (tx *TransactionEx) EncodeRLP(w io.Writer) error {
+	if err := tx.Tx.EncodeRLP(w); err != nil {
+		return err
+	}
+	var from common.Address
+	if sc := tx.Tx.from.Load(); sc != nil {
+		from = sc.from
+	}
+	return rlp.Encode(w, &from)
+}
+
+// DecodeRLP implements rlp.Decoder
+func (tx *TransactionEx) DecodeRLP(s *rlp.Stream) error {
+	tx.Tx = &Transaction{}
+	if err := tx.Tx.DecodeRLP(s); err != nil {
+		return err
+	}
+	return s.Decode(&tx.From)
 }
 
 // WithSignature returns a new transaction with the given signature.

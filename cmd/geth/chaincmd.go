@@ -421,6 +421,10 @@ func importHistory(ctx *cli.Context) error {
 	// Determine network.
 	if utils.IsNetworkPreset(ctx) {
 		switch {
+		case ctx.Bool(utils.WemixMainnetFlag.Name):
+			network = "wemix"
+		case ctx.Bool(utils.WemixTestnetFlag.Name):
+			network = "twemix"
 		case ctx.Bool(utils.MainnetFlag.Name):
 			network = "mainnet"
 		case ctx.Bool(utils.SepoliaFlag.Name):

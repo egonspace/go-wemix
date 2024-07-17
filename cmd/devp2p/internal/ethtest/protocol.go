@@ -20,7 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// Unexported devp2p message codes from p2p/peer.go.
+// Unexported devp2p message codes from p2p/wemix_peer.go.
 const (
 	handshakeMsg = 0x00
 	discMsg      = 0x01
@@ -35,7 +35,7 @@ const (
 	snapProtoLen = 8
 )
 
-// Unexported handshake structure from p2p/peer.go.
+// Unexported handshake structure from p2p/wemix_peer.go.
 type protoHandshake struct {
 	Version    uint64
 	Name       string

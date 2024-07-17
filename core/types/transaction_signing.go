@@ -145,6 +145,49 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 	return addr, nil
 }
 
+// set sender
+func SetSender(signer Signer, tx *Transaction, from common.Address) {
+	if sc := tx.from.Load(); sc != nil {
+		if sc.signer.Equal(signer) {
+			return
+		}
+	}
+	tx.from.Store(&sigCache{signer: signer, from: from})
+}
+
+// get sender
+func GetSender(signer Signer, tx *Transaction) *common.Address {
+	if sc := tx.from.Load(); sc != nil {
+		// If the signer used to derive from in a previous
+		// call is not the same as used current, invalidate
+		// the cache.
+		if sc.signer.Equal(signer) {
+			return &sc.from
+		}
+	}
+	return nil
+}
+
+// fee delegation
+func FeePayer(signer Signer, tx *Transaction) (common.Address, error) {
+	if sc := tx.feePayer.Load(); sc != nil {
+		// If the signer used to derive from in a previous
+		// call is not the same as used current, invalidate
+		// the cache.
+		if sc.signer.Equal(signer) {
+			return sc.from, nil
+		}
+	}
+
+	addr, err := signer.Sender(tx)
+
+	if err != nil {
+		return common.Address{}, err
+	}
+	tx.feePayer.Store(&sigCache{signer: signer, from: addr})
+	return addr, nil
+}
+
 // Signer encapsulates transaction signature handling. The name of this type is slightly
 // misleading because Signers don't actually sign, they're just for validating and
 // processing of signatures.
@@ -166,6 +209,73 @@ type Signer interface {
 
 	// Equal returns true if the given signer is the same as the receiver.
 	Equal(Signer) bool
+}
+
+// fee delegation
+type feeDelegateSigner struct{ londonSigner }
+
+func NewFeeDelegateSigner(chainId *big.Int) Signer {
+	return feeDelegateSigner{londonSigner{eip2930Signer{NewEIP155Signer(chainId)}}}
+}
+
+func (s feeDelegateSigner) Sender(tx *Transaction) (common.Address, error) {
+	if tx.Type() != FeeDelegateDynamicFeeTxType {
+		return s.londonSigner.Sender(tx)
+	}
+	V, R, S := tx.RawFeePayerSignatureValues()
+	// DynamicFee txs are defined to use 0 and 1 as their recovery
+	// id, add 27 to become equivalent to unprotected Homestead signatures.
+	V = new(big.Int).Add(V, big.NewInt(27))
+	if tx.ChainId().Cmp(s.chainId) != 0 {
+		return common.Address{}, ErrInvalidChainId
+	}
+	return recoverPlain(s.Hash(tx), R, S, V, true)
+}
+
+func (s feeDelegateSigner) Equal(s2 Signer) bool {
+	x, ok := s2.(feeDelegateSigner)
+	return ok && x.chainId.Cmp(s.chainId) == 0
+}
+
+func (s feeDelegateSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *big.Int, err error) {
+	txdata, ok := tx.inner.(*FeeDelegateDynamicFeeTx)
+
+	if !ok {
+		return s.londonSigner.SignatureValues(tx, sig)
+	}
+	// Check that chain ID of tx matches the signer. We also accept ID zero here,
+	// because it indicates that the chain ID was not specified in the tx.
+	if txdata.SenderTx.chainID().Sign() != 0 && txdata.SenderTx.chainID().Cmp(s.chainId) != 0 {
+		return nil, nil, nil, ErrInvalidChainId
+	}
+	R, S, _ = decodeSignature(sig)
+	V = big.NewInt(int64(sig[64]))
+	return R, S, V, nil
+}
+
+// Hash returns the hash to be signed by the sender.
+// It does not uniquely identify the transaction.
+func (s feeDelegateSigner) Hash(tx *Transaction) common.Hash {
+	senderV, senderR, senderS := tx.RawSignatureValues()
+	return prefixedRlpHash(
+		tx.Type(),
+		[]interface{}{
+			[]interface{}{
+				s.chainId,
+				tx.Nonce(),
+				tx.GasTipCap(),
+				tx.GasFeeCap(),
+				tx.Gas(),
+				tx.To(),
+				tx.Value(),
+				tx.Data(),
+				tx.AccessList(),
+				senderV,
+				senderR,
+				senderS,
+			},
+			tx.FeePayer(),
+		})
 }
 
 type cancunSigner struct{ londonSigner }
@@ -285,11 +395,16 @@ func (s londonSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *big
 // Hash returns the hash to be signed by the sender.
 // It does not uniquely identify the transaction.
 func (s londonSigner) Hash(tx *Transaction) common.Hash {
-	if tx.Type() != DynamicFeeTxType {
+	if tx.Type() != DynamicFeeTxType && tx.Type() != FeeDelegateDynamicFeeTxType {
 		return s.eip2930Signer.Hash(tx)
 	}
+	// fee delegation
+	txType := tx.Type()
+	if txType == FeeDelegateDynamicFeeTxType {
+		txType = DynamicFeeTxType
+	}
 	return prefixedRlpHash(
-		tx.Type(),
+		txType,
 		[]interface{}{
 			s.chainId,
 			tx.Nonce(),

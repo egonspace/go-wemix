@@ -20,6 +20,7 @@ package eth
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/eth/protocols/mir"
 	"math/big"
 	"runtime"
 	"sync"
@@ -320,6 +321,15 @@ func (s *Ethereum) APIs() []rpc.API {
 	// Append any APIs exposed explicitly by the consensus engine
 	apis = append(apis, s.engine.APIs(s.BlockChain())...)
 
+	if brioche := s.blockchain.Config().Brioche; brioche != nil {
+		apis = append(apis, rpc.API{
+			Namespace: "wemix",
+			Version:   "1.0",
+			Service:   NewPublicWemixAPI(s),
+			Public:    true,
+		})
+	}
+
 	// Append all the local APIs and return
 	return append(apis, []rpc.API{
 		{
@@ -364,6 +374,7 @@ func (s *Ethereum) BloomIndexer() *core.ChainIndexer   { return s.bloomIndexer }
 // network protocols to start.
 func (s *Ethereum) Protocols() []p2p.Protocol {
 	protos := eth.MakeProtocols((*ethHandler)(s.handler), s.networkID, s.ethDialCandidates)
+	protos := mir.MakeProtocols((*mirHandler)(s.handler), s.networkID, s.ethDialCandidates)
 	if s.config.SnapshotCache > 0 {
 		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler), s.snapDialCandidates)...)
 	}

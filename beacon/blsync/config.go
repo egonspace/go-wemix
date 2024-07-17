@@ -31,6 +31,32 @@ type lightClientConfig struct {
 }
 
 var (
+	WemixMainnetConfig = lightClientConfig{
+		ChainConfig: (&types.ChainConfig{ // TODO: Fix it for WEMIX
+			GenesisValidatorsRoot: common.HexToHash("0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95"),
+			GenesisTime:           1606824023,
+		}).
+			AddFork("GENESIS", 0, []byte{0, 0, 0, 0}).
+			AddFork("ALTAIR", 74240, []byte{1, 0, 0, 0}).
+			AddFork("BELLATRIX", 144896, []byte{2, 0, 0, 0}).
+			AddFork("CAPELLA", 194048, []byte{3, 0, 0, 0}).
+			AddFork("DENEB", 269568, []byte{4, 0, 0, 0}),
+		Checkpoint: common.HexToHash("0x388be41594ec7d6a6894f18c73f3469f07e2c19a803de4755d335817ed8e2e5a"),
+	}
+
+	WemixTestnetConfig = lightClientConfig{
+		ChainConfig: (&types.ChainConfig{ // TODO: Fix it for WEMIX
+			GenesisValidatorsRoot: common.HexToHash("0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95"),
+			GenesisTime:           1606824023,
+		}).
+			AddFork("GENESIS", 0, []byte{0, 0, 0, 0}).
+			AddFork("ALTAIR", 74240, []byte{1, 0, 0, 0}).
+			AddFork("BELLATRIX", 144896, []byte{2, 0, 0, 0}).
+			AddFork("CAPELLA", 194048, []byte{3, 0, 0, 0}).
+			AddFork("DENEB", 269568, []byte{4, 0, 0, 0}),
+		Checkpoint: common.HexToHash("0x388be41594ec7d6a6894f18c73f3469f07e2c19a803de4755d335817ed8e2e5a"),
+	}
+
 	MainnetConfig = lightClientConfig{
 		ChainConfig: (&types.ChainConfig{
 			GenesisValidatorsRoot: common.HexToHash("0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95"),
@@ -74,8 +100,12 @@ var (
 func makeChainConfig(ctx *cli.Context) lightClientConfig {
 	var config lightClientConfig
 	customConfig := ctx.IsSet(utils.BeaconConfigFlag.Name)
-	utils.CheckExclusive(ctx, utils.MainnetFlag, utils.GoerliFlag, utils.SepoliaFlag, utils.BeaconConfigFlag)
+	utils.CheckExclusive(ctx, utils.MainnetFlag, utils.GoerliFlag, utils.SepoliaFlag, utils.BeaconConfigFlag, utils.WemixMainnetFlag, utils.WemixTestnetFlag)
 	switch {
+	case ctx.Bool(utils.WemixMainnetFlag.Name):
+		config = WemixMainnetConfig
+	case ctx.Bool(utils.WemixTestnetFlag.Name):
+		config = WemixTestnetConfig
 	case ctx.Bool(utils.MainnetFlag.Name):
 		config = MainnetConfig
 	case ctx.Bool(utils.SepoliaFlag.Name):

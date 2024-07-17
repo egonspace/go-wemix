@@ -13,7 +13,6 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -22,7 +21,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -39,33 +37,6 @@ type RemoteContract struct {
 	To   *common.Address
 	Abi  abi.ABI
 	Gas  int
-}
-
-// if password
-// - || "": read password from stdin
-// @<file-name>: <file-name> file has password
-func LoadAccount(password, fileName string) (*keystore.Key, error) {
-	var err error
-	if password == "" || password == "-" {
-		password, err = prompt.PromptPassword("Passphrase: ")
-		if err != nil {
-			return nil, err
-		}
-	} else if password[0] == '@' {
-		var pw []byte
-		pw, err = os.ReadFile(password[1:])
-		if err != nil {
-			return nil, err
-		}
-		password = strings.TrimSpace(string(pw))
-	}
-
-	var keyJson []byte
-	keyJson, err = os.ReadFile(fileName)
-	if err != nil {
-		return nil, err
-	}
-	return keystore.DecryptKey(keyJson, password)
 }
 
 type contractJson struct {

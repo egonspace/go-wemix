@@ -129,16 +129,19 @@ func toWordSize(size uint64) uint64 {
 // A Message contains the data derived from a single transaction that is relevant to state
 // processing.
 type Message struct {
-	To            *common.Address
-	From          common.Address
-	Nonce         uint64
-	Value         *big.Int
-	GasLimit      uint64
-	GasPrice      *big.Int
-	GasFeeCap     *big.Int
-	GasTipCap     *big.Int
-	Data          []byte
-	AccessList    types.AccessList
+	To         *common.Address
+	From       common.Address
+	Nonce      uint64
+	Value      *big.Int
+	GasLimit   uint64
+	GasPrice   *big.Int
+	GasFeeCap  *big.Int
+	GasTipCap  *big.Int
+	Data       []byte
+	AccessList types.AccessList
+	// fee delegation
+	FeePayer *common.Address
+
 	BlobGasFeeCap *big.Int
 	BlobHashes    []common.Hash
 
@@ -159,6 +162,7 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 		To:                tx.To(),
 		Value:             tx.Value(),
 		Data:              tx.Data(),
+		FeePayer:          tx.FeePayer(),
 		AccessList:        tx.AccessList(),
 		SkipAccountChecks: false,
 		BlobHashes:        tx.BlobHashes(),
@@ -234,47 +238,102 @@ func (st *StateTransition) to() common.Address {
 }
 
 func (st *StateTransition) buyGas() error {
-	mgval := new(big.Int).SetUint64(st.msg.GasLimit)
-	mgval.Mul(mgval, st.msg.GasPrice)
-	balanceCheck := new(big.Int).Set(mgval)
-	if st.msg.GasFeeCap != nil {
-		balanceCheck.SetUint64(st.msg.GasLimit)
-		balanceCheck = balanceCheck.Mul(balanceCheck, st.msg.GasFeeCap)
-	}
-	balanceCheck.Add(balanceCheck, st.msg.Value)
-
-	if st.evm.ChainConfig().IsCancun(st.evm.Context.BlockNumber, st.evm.Context.Time) {
-		if blobGas := st.blobGasUsed(); blobGas > 0 {
-			// Check that the user has enough funds to cover blobGasUsed * tx.BlobGasFeeCap
-			blobBalanceCheck := new(big.Int).SetUint64(blobGas)
-			blobBalanceCheck.Mul(blobBalanceCheck, st.msg.BlobGasFeeCap)
-			balanceCheck.Add(balanceCheck, blobBalanceCheck)
-			// Pay for blobGasUsed * actual blob fee
-			blobFee := new(big.Int).SetUint64(blobGas)
-			blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
-			mgval.Add(mgval, blobFee)
+	if st.msg.FeePayer == nil || *st.msg.FeePayer == st.msg.From {
+		mgval := new(big.Int).SetUint64(st.msg.GasLimit)
+		mgval.Mul(mgval, st.msg.GasPrice)
+		balanceCheck := new(big.Int).Set(mgval)
+		if st.msg.GasFeeCap != nil {
+			balanceCheck.SetUint64(st.msg.GasLimit)
+			balanceCheck = balanceCheck.Mul(balanceCheck, st.msg.GasFeeCap)
 		}
-	}
-	balanceCheckU256, overflow := uint256.FromBig(balanceCheck)
-	if overflow {
-		return fmt.Errorf("%w: address %v required balance exceeds 256 bits", ErrInsufficientFunds, st.msg.From.Hex())
-	}
-	if have, want := st.state.GetBalance(st.msg.From), balanceCheckU256; have.Cmp(want) < 0 {
-		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
-	}
-	if err := st.gp.SubGas(st.msg.GasLimit); err != nil {
-		return err
-	}
+		balanceCheck.Add(balanceCheck, st.msg.Value)
 
-	if st.evm.Config.Tracer != nil && st.evm.Config.Tracer.OnGasChange != nil {
-		st.evm.Config.Tracer.OnGasChange(0, st.msg.GasLimit, tracing.GasChangeTxInitialBalance)
-	}
-	st.gasRemaining = st.msg.GasLimit
+		if st.evm.ChainConfig().IsCancun(st.evm.Context.BlockNumber, st.evm.Context.Time) {
+			if blobGas := st.blobGasUsed(); blobGas > 0 {
+				// Check that the user has enough funds to cover blobGasUsed * tx.BlobGasFeeCap
+				blobBalanceCheck := new(big.Int).SetUint64(blobGas)
+				blobBalanceCheck.Mul(blobBalanceCheck, st.msg.BlobGasFeeCap)
+				balanceCheck.Add(balanceCheck, blobBalanceCheck)
+				// Pay for blobGasUsed * actual blob fee
+				blobFee := new(big.Int).SetUint64(blobGas)
+				blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
+				mgval.Add(mgval, blobFee)
+			}
+		}
+		balanceCheckU256, overflow := uint256.FromBig(balanceCheck)
+		if overflow {
+			return fmt.Errorf("%w: address %v required balance exceeds 256 bits", ErrInsufficientFunds, st.msg.From.Hex())
+		}
+		if have, want := st.state.GetBalance(st.msg.From), balanceCheckU256; have.Cmp(want) < 0 {
+			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
+		}
+		if err := st.gp.SubGas(st.msg.GasLimit); err != nil {
+			return err
+		}
 
-	st.initialGas = st.msg.GasLimit
-	mgvalU256, _ := uint256.FromBig(mgval)
-	st.state.SubBalance(st.msg.From, mgvalU256, tracing.BalanceDecreaseGasBuy)
-	return nil
+		if st.evm.Config.Tracer != nil && st.evm.Config.Tracer.OnGasChange != nil {
+			st.evm.Config.Tracer.OnGasChange(0, st.msg.GasLimit, tracing.GasChangeTxInitialBalance)
+		}
+		st.gasRemaining = st.msg.GasLimit
+
+		st.initialGas = st.msg.GasLimit
+		mgvalU256, _ := uint256.FromBig(mgval)
+		st.state.SubBalance(st.msg.From, mgvalU256, tracing.BalanceDecreaseGasBuy)
+		return nil
+	} else {
+		if !st.evm.ChainConfig().IsApplepie(st.evm.Context.BlockNumber) {
+			return fmt.Errorf("%w: fee delegation type not supported", ErrTxTypeNotSupported)
+		}
+
+		mgval := new(big.Int).SetUint64(st.msg.GasLimit)
+		mgval.Mul(mgval, st.msg.GasPrice)
+		feeCheck := new(big.Int).Set(mgval)
+		if st.msg.GasFeeCap != nil {
+			feeCheck.SetUint64(st.msg.GasLimit)
+			feeCheck = feeCheck.Mul(feeCheck, st.msg.GasFeeCap)
+		}
+		valCheck := new(big.Int).Set(st.msg.Value)
+
+		if st.evm.ChainConfig().IsCancun(st.evm.Context.BlockNumber, st.evm.Context.Time) {
+			if blobGas := st.blobGasUsed(); blobGas > 0 {
+				// Check that the user has enough funds to cover blobGasUsed * tx.BlobGasFeeCap
+				blobBalanceCheck := new(big.Int).SetUint64(blobGas)
+				blobBalanceCheck.Mul(blobBalanceCheck, st.msg.BlobGasFeeCap)
+				feeCheck.Add(feeCheck, blobBalanceCheck)
+				// Pay for blobGasUsed * actual blob fee
+				blobFee := new(big.Int).SetUint64(blobGas)
+				blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
+				mgval.Add(mgval, blobFee)
+			}
+		}
+		feeCheckU256, overflow := uint256.FromBig(feeCheck)
+		if overflow {
+			return fmt.Errorf("%w: address %v required balance exceeds 256 bits", ErrInsufficientFunds, st.msg.From.Hex())
+		}
+		valCheckU256, overflow := uint256.FromBig(valCheck)
+		if overflow {
+			return fmt.Errorf("%w: address %v required balance exceeds 256 bits", ErrInsufficientFunds, st.msg.From.Hex())
+		}
+		if have, want := st.state.GetBalance(*st.msg.FeePayer), feeCheckU256; have.Cmp(want) < 0 {
+			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.FeePayer.Hex(), have, want)
+		}
+		if have, want := st.state.GetBalance(st.msg.From), valCheckU256; have.Cmp(want) < 0 {
+			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
+		}
+		if err := st.gp.SubGas(st.msg.GasLimit); err != nil {
+			return err
+		}
+
+		if st.evm.Config.Tracer != nil && st.evm.Config.Tracer.OnGasChange != nil {
+			st.evm.Config.Tracer.OnGasChange(0, st.msg.GasLimit, tracing.GasChangeTxInitialBalance)
+		}
+		st.gasRemaining = st.msg.GasLimit
+
+		st.initialGas = st.msg.GasLimit
+		mgvalU256, _ := uint256.FromBig(mgval)
+		st.state.SubBalance(*st.msg.FeePayer, mgvalU256, tracing.BalanceDecreaseGasBuy)
+		return nil
+	}
 }
 
 func (st *StateTransition) preCheck() error {

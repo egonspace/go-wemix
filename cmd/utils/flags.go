@@ -137,6 +137,16 @@ var (
 		Value:    ethconfig.Defaults.NetworkId,
 		Category: flags.EthCategory,
 	}
+	WemixMainnetFlag = &cli.BoolFlag{
+		Name:     "wemix",
+		Usage:    "Wemix mainnet",
+		Category: flags.EthCategory,
+	}
+	WemixTestnetFlag = &cli.BoolFlag{
+		Name:     "twemix",
+		Usage:    "Wemix testnet",
+		Category: flags.EthCategory,
+	}
 	MainnetFlag = &cli.BoolFlag{
 		Name:     "mainnet",
 		Usage:    "Ethereum mainnet",
@@ -964,12 +974,13 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 var (
 	// TestnetFlags is the flag group of all built-in supported testnets.
 	TestnetFlags = []cli.Flag{
+		WemixTestnetFlag,
 		GoerliFlag,
 		SepoliaFlag,
 		HoleskyFlag,
 	}
 	// NetworkFlags is the flag group of all built-in supported networks.
-	NetworkFlags = append([]cli.Flag{MainnetFlag}, TestnetFlags...)
+	NetworkFlags = append([]cli.Flag{WemixMainnetFlag, MainnetFlag}, TestnetFlags...)
 
 	// DatabaseFlags is the flag group of all database flags.
 	DatabaseFlags = []cli.Flag{
@@ -1644,7 +1655,7 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
-	CheckExclusive(ctx, MainnetFlag, DeveloperFlag, GoerliFlag, SepoliaFlag, HoleskyFlag)
+	CheckExclusive(ctx, WemixMainnetFlag, WemixTestnetFlag, MainnetFlag, DeveloperFlag, GoerliFlag, SepoliaFlag, HoleskyFlag)
 	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 
 	// Set configurations from CLI flags
@@ -1795,6 +1806,18 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	// Override any default configs for hard coded networks.
 	switch {
+	case ctx.Bool(WemixMainnetFlag.Name):
+		if !ctx.IsSet(NetworkIdFlag.Name) {
+			cfg.NetworkId = 1111
+		}
+		cfg.Genesis = core.WemixMainnetGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.WemixMainnetGenesisHash)
+	case ctx.Bool(WemixTestnetFlag.Name):
+		if !ctx.IsSet(NetworkIdFlag.Name) {
+			cfg.NetworkId = 1112
+		}
+		cfg.Genesis = core.WemixTestnetGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.WemixTestnetGenesisHash)
 	case ctx.Bool(MainnetFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 1
@@ -2134,6 +2157,10 @@ func DialRPCWithHeaders(endpoint string, headers []string) (*rpc.Client, error) 
 func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	var genesis *core.Genesis
 	switch {
+	case ctx.Bool(WemixMainnetFlag.Name):
+		genesis = core.WemixMainnetGenesisBlock()
+	case ctx.Bool(WemixTestnetFlag.Name):
+		genesis = core.WemixTestnetGenesisBlock()
 	case ctx.Bool(MainnetFlag.Name):
 		genesis = core.DefaultGenesisBlock()
 	case ctx.Bool(HoleskyFlag.Name):
